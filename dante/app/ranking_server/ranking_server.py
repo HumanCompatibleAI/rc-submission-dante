@@ -114,6 +114,9 @@ def combine_scores(har_scores, ar_scores, ad_scores, td_scores):
     ranked_results = non_har_posts + har_posts
     return ranked_results
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 @app.post("/rank")
 def rank(ranking_request: RankingRequest) -> RankingResponse:
