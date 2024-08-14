@@ -44,9 +44,9 @@ services:
       REDIS_CONNECTION_STRING: redis://redis:6379
       CELERY_BROKER: redis://redis-celery-broker:6380
       CELERY_BACKEND: redis://redis-celery-broker:6380
-    command: ["uvicorn", "--host", "0.0.0.0", "--port", "5001", "dante.app.ranking_server.ranking_server:app"]
+    command: ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "dante.app.ranking_server.ranking_server:app"]
     ports:
-      - "5001:5001"
+      - "8000:8000"
     volumes:
       - type: bind
         source: ${PWD}/config.ini
