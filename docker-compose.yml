@@ -38,6 +38,7 @@ services:
       dockerfile: Dockerfile
       platforms:
         - linux/amd64
+    image: dante-ranker
     depends_on:
       - redis
     environment:
@@ -55,14 +56,15 @@ services:
         source: ${HOME}/.cache/dante
         target: /app/cache
 
-  celery-scorer-worker0:
+  worker:
     build:
       context: .
       dockerfile: Dockerfile
       platforms:
         - linux/amd64
+    image: dante-ranker
     depends_on:
-      - redis-celery-broker
+      - redis-celery-worker
     environment:
       CELERY_BROKER: redis://redis-celery-broker:6380
       CELERY_BACKEND: redis://redis-celery-broker:6380
@@ -75,25 +77,25 @@ services:
         source: ${HOME}/.cache/dante
         target: /app/cache
 
-  celery-scorer-worker1:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      platforms:
-        - linux/amd64
-    depends_on:
-      - redis-celery-broker
-    environment:
-      CELERY_BROKER: redis://redis-celery-broker:6380
-      CELERY_BACKEND: redis://redis-celery-broker:6380
-    command: ["celery", "-A", "dante.app.scorer_worker.tasks", "worker", "-Q", "scorer", "--loglevel=info"]
-    volumes:
-      - type: bind
-        source: ${PWD}/config.ini
-        target: /app/config.ini
-      - type: bind
-        source: ${HOME}/.cache/dante
-        target: /app/cache
+  # celery-scorer-worker1:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     platforms:
+  #       - linux/amd64
+  #   depends_on:
+  #     - redis-celery-broker
+  #   environment:
+  #     CELERY_BROKER: redis://redis-celery-broker:6380
+  #     CELERY_BACKEND: redis://redis-celery-broker:6380
+  #   command: ["celery", "-A", "dante.app.scorer_worker.tasks", "worker", "-Q", "scorer", "--loglevel=info"]
+  #   volumes:
+  #     - type: bind
+  #       source: ${PWD}/config.ini
+  #       target: /app/config.ini
+  #     - type: bind
+  #       source: ${HOME}/.cache/dante
+  #       target: /app/cache
 
 volumes:
   postgres_data:

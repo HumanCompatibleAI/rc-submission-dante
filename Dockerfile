@@ -13,7 +13,7 @@ ENV PIP_REQUESTS_TIMEOUT=300 \
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock .
+COPY pyproject.toml poetry.lock ./
 
 # Install dependencies from lock file but not the package itself (--no-root),
 # which is installed later. Separating this step from the package installation
