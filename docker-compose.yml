@@ -64,7 +64,7 @@ services:
         - linux/amd64
     image: dante-ranker
     depends_on:
-      - redis-celery-worker
+      - redis-celery-broker
     environment:
       CELERY_BROKER: redis://redis-celery-broker:6380
       CELERY_BACKEND: redis://redis-celery-broker:6380
