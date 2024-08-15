@@ -58,7 +58,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: dante-ranker
+    image: dante-worker
     depends_on:
       - redis-celery-broker
     environment:
