@@ -35,7 +35,7 @@ services:
   ranker:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-ranker
     image: dante-ranker
     depends_on:
       - redis
@@ -57,7 +57,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-worker
     image: dante-worker
     depends_on:
       - redis-celery-broker
