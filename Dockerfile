@@ -58,3 +58,4 @@ COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 
 # # Define the command to run the application
 # CMD ["uvicorn", "--host", "0.0.0.0", "--port", "5001", "dante.app.ranking_server.ranking_server:app"]
+CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "dante.app.ranking_server.ranking_server:app"]
