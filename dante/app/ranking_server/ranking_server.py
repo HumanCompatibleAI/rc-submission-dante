@@ -1,33 +1,29 @@
+## Run with: uvicorn --host 0.0.0.0 --port 8000 dante.app.ranking_server.ranking_server:app --reload
 # Standard library imports
+import json
+import os
+
 from bisect import bisect
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import logging
-import os
-# import sys
 
 # External dependencies
-from fastapi import FastAPI
-from fastapi.encoders import jsonable_encoder
-from ranking_challenge.request import RankingRequest, ContentItem
-from ranking_challenge.response import RankingResponse
 import redis
 import uvicorn
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
+from ranking_challenge.request import RankingRequest, ContentItem
+from ranking_challenge.response import RankingResponse
+
 # Package dependencies
-from .utils import multisort, clean_text
+from ...utils import getconfig, multisort, clean_text, get_logger
 from ..scorer_worker.scorer_basic import compute_batch_scores
 
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S,%f",
-)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 logger.info("Starting up")
 
-REDIS_DB = os.getenv('REDIS_CONNECTION_STRING', 'redis://localhost:6379/0')
-
+# XXX read version from __version__ file?
 app = FastAPI(
     title="Prosocial Ranking Challenge combined example",
     description="Ranks input based on how unpopular the things "
@@ -35,11 +31,25 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Set up CORS. This is necessary if calling this code directly from a browser extension
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["HEAD", "OPTIONS", "GET", "POST"],
+    allow_headers=["*"],
+)
+
 memoized_redis_client = None
 
 
 def redis_client():
     global memoized_redis_client
+    c = getconfig()
+    # Get connection string from environment or use value from configuration
+    # file as a fallback
+    REDIS_DB = os.getenv('REDIS_CONNECTION_STRING',
+                         c.get("RANKER", "redis_db"))
     if memoized_redis_client is None:
         memoized_redis_client = redis.Redis.from_url(REDIS_DB)
     return memoized_redis_client
@@ -76,13 +86,14 @@ def combine_scores(har_scores, ar_scores, ad_scores, td_scores):
         (list of dict): a reordered list of dictionaries
     """
     # Helper: normalization for HaR scores
-    BOUNDARIES = [0.557, 0.572, 0.581, 0.6]
+    c = getconfig()
+    boundaries = json.loads(c.get("RANKER", "boundaries"))
     ranked_results = []
     non_har_posts = []  # these posts are ok
     har_posts = []  # these posts elicit toxicity
     for item_id, har_score in har_scores:
         ar_score = ar_scores[item_id]
-        har_normalized = bisect(BOUNDARIES, har_score)
+        har_normalized = bisect(boundaries, har_score)
         ad_score = ad_scores[item_id] if ad_scores[item_id] \
             != -1000 else td_scores[item_id]
         processed_item = {
@@ -121,7 +132,7 @@ def health_check():
 @app.post("/rank")
 def rank(ranking_request: RankingRequest) -> RankingResponse:
     logger.info("Received ranking request")
-    redis_client_obj = redis.Redis.from_url(REDIS_DB)
+    redis_client_obj = redis_client()
     if ranking_request.survey:
         redis_client_obj[ranking_request.session.user_id] = (
             ranking_request.survey.ideology
@@ -140,6 +151,8 @@ def rank(ranking_request: RankingRequest) -> RankingResponse:
         }
         for item in post_items
     ]
+    # # Using ThreadPoolExecutor instead, see below
+    #
     # # get different scores
     # har_scores = compute_batch_scores(
     #     "dante.app.scorer_worker.tasks.har_batch_scorer", post_data, platform
@@ -162,17 +175,18 @@ def rank(ranking_request: RankingRequest) -> RankingResponse:
         "ar_scores": (
             "dante.app.scorer_worker.tasks.ar_batch_scorer",
             post_data,
-            platform
+            platform,
         ),
         "ad_scores": (
             "dante.app.scorer_worker.tasks.ad_batch_scorer",
             post_data,
-            platform
+            platform,
         ),
         "td_scores": (
             "dante.app.scorer_worker.tasks.td_batch_scorer",
             post_data,
-            platform),
+            platform,
+        ),
     }
     scores = {}
     with ThreadPoolExecutor() as executor:
@@ -197,11 +211,11 @@ def rank(ranking_request: RankingRequest) -> RankingResponse:
     return RankingResponse(**result)
 
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "dante.app.ranking_server.ranking_server:app",
-        host="127.0.0.1",
-        port=5001,
-        log_level="debug",
-        reload=True,
-    )
+# if __name__ == "__main__":
+#     uvicorn.run(
+#         "dante.app.ranking_server.ranking_server:app",
+#         host="127.0.0.1",
+#         port=5001,
+#         log_level="debug",
+#         reload=True,
+#     )

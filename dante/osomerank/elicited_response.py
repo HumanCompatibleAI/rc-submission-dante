@@ -6,7 +6,13 @@ Created on Tue June 4 2024
 @author: Ozgur (modified by Bao, Giovanni)
 """
 
-__all__ = ['har_prediction', 'ar_prediction', 'load_er_models']
+__all__ = [
+    "har_prediction",
+    "ar_prediction",
+    "load_er_models",
+    "AR_AVG_SCORE",
+    "HAR_AVG_SCORE",
+]
 
 # Standard library imports
 import os
@@ -20,7 +26,7 @@ from transformers import (
 )
 
 # Package imports
-from .utils import getcachedir, getconfig, get_logger, fetchfroms3
+from ..utils import getcachedir, getconfig, get_logger, fetchfroms3
 
 config = getconfig()
 
@@ -81,7 +87,7 @@ def har_prediction(texts, platform):
         texts (list of str): texts from social media posts.
 
         platform (str): the type of social media: {'twitter', 'reddit',
-            'facebook'}
+        'facebook'}
 
     Returns:
         HaR score (float): The predicted HaR score for a feed_post
@@ -116,7 +122,7 @@ def ar_prediction(texts, platform):
         texts (list of str): texts from social media posts.
 
         platform (str): the type of social media: {'twitter', 'reddit',
-            'facebook'}
+        'facebook'}
 
     Returns:
         AR score (float): The predicted AR score for a feed_post

@@ -1,62 +1,80 @@
-"""Scoring tasks for the scoring job queue.
+"""
+Batch scoring tasks for the scoring job queue.
 
-We illustrate two types of scoring tasks: random scoring and har scoring.
-Random scoring tasks additionally provide optional parameters to control task
-duration and raise exceptions for testing.
+## Attributes
 
-In this example, the output format of the different types of scoring tasks is
-identical; if the output format differs the client code must keep track of task
-types and deserialize the output accordingly.
+There are read from configuration file, see `dante.utils:getconfig`.
 
-We provide Pydantic models for inputs and outputs, as they are self-documenting
-and provide built-in validation. They can optionally be used by the client code
-to construct tasks. Keep in mind that Celery's default serialization protocol
-is JSON, so the implementer is free to choose any favorite data type that can
-be easily converted to and from JSON, such as dataclasses, Pydantic models,
-vanilla dicts, etc.
+    - KILL_DEADLINE_SECONDS (float): Timeout before a task is killed by Celery
 
-Timing information in the output is included for illustration/benchmarking.
+    - TIME_LIMIT_SECONDS (float): Timeout before Celery raises a timeout error.
+      Must be less than KILL_DEADLINE_SECONDS
 
+## Functions
 
-Attributes:
-    KILL_DEADLINE_SECONDS (float): Timeout before a task is killed by Celery
-    TIME_LIMIT_SECONDS (float): Timeout before Celery raises a timeout error.
-                                Must be less than KILL_DEADLINE_SECONDS
+These have actually all the signature of a method, where self is the celery
+app. The `*_batch_scorer` are runners for batch scoring, so they return a list
+of dictionaries instead of just a dictionary with id and score:
 
-Functions:
     har_scorer(**kwargs) -> dict[str, float]: runner for har scorer
+    har_batch_scorer(**kwargs) -> list[dict[str, float]]:
+    ar_batch_scorer(**kwargs) -> list[dict[str, float]]:
+    ad_batch_scorer(**kwargs) -> list[dict[str, float]]:
+    td_batch_scorer(**kwargs) -> list[dict[str, float]]:
 
+Other utility functions:
 
-Models:
+    do_har_scoring(input: SentimentScoreInput) -> SentimentScoreOutput: helper
+        function for har_scorer.
+
+    init_osomerank(*args, **kwargs) -> None: Signal sent to Celery workers to
+        load all model artifacts on worker init.
+
+    do_batch_scoring(input: BatchScoreInput,
+                     prediction_function: Callable[[list[str], str],
+                                                   list[float]],
+                     onlytext: Optional[bool] = False) -> dict[str, float]:
+        utility function for the *_batch_scorer functions
+
+## Models
     SentimentScoreInput
     SentimentScoreOutput
+    BatchScoreInput
+    ScoreOutput
 """
 
 # Standard library imports
-import logging
 import time
 
 from typing import Any, List, Dict, Callable, Optional
 
 # External dependencies imports
 from pydantic import BaseModel, Field
+from celery.exceptions import SoftTimeLimitExceeded
 from celery.signals import worker_init
 from .celery_app import app
 
 # Package imports
-from dante.osomerank import ar_prediction, har_prediction, ad_prediction,\
-    td_prediction, load_all
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from dante.osomerank import (
+    ar_prediction,
+    har_prediction,
+    ad_prediction,
+    td_prediction,
+    load_all,
+    AR_AVG_SCORE,
+    HAR_AVG_SCORE,
+    AD_AVG_SCORE,
 )
-logger = logging.getLogger(__name__)
+from ...utils import getconfig, get_logger
 
+logger = get_logger(__name__)
 
-KILL_DEADLINE_SECONDS = 20
-TIME_LIMIT_SECONDS = 20
+c = getconfig()
+
+# hard time limit
+KILL_DEADLINE_SECONDS = c.get("SCORER", "KILL_DEADLINE_SECONDS")
+# soft time limit
+TIME_LIMIT_SECONDS = c.get("SCORER", "TIME_LIMIT_SECONDS")
 
 
 class SentimentScoreInput(BaseModel):
@@ -68,7 +86,6 @@ class BatchScoreInput(BaseModel):
     batch: List[Dict[str, Any]] = Field(
         description="A list of dictionaries, each with 'id', 'text', 'urls' "
         "and 'platform' keys for batch scoring"
-    )
     platform: str = Field(description="The platform of the items to score")
 
 
@@ -194,17 +211,21 @@ def har_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
 
     The results are stored in the Celery result backend.
     """
-    start = time.time()
-    task_id = self.request.id
-    worker_id = self.request.hostname
-    logger.info(f"Task {task_id} started by {worker_id}")
-    input = BatchScoreInput(**kwargs)
-    batch_result = BatchScoreOutput(
-        batch=do_batch_scoring(input, har_prediction, onlytext=True),
-        t_start=start,
-        t_end=time.time(),
-    )
-    return batch_result.batch
+    try:
+        start = time.time()
+        task_id = self.request.id
+        worker_id = self.request.hostname
+        logger.info(f"Task {task_id} started by {worker_id}")
+        input = BatchScoreInput(**kwargs)
+        batch_result = BatchScoreOutput(
+            batch=do_batch_scoring(input, har_prediction, onlytext=True),
+            t_start=start,
+            t_end=time.time(),
+        )
+        return batch_result.batch
+    except SoftTimeLimitExceeded:
+        # Return a default value when the soft time limit is exceeded
+        return {item["id"]: HAR_AVG_SCORE for item in input.batch}
 
 
 @app.task(
@@ -227,17 +248,21 @@ def ar_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
 
     The results are stored in the Celery result backend.
     """
-    start = time.time()
-    task_id = self.request.id
-    worker_id = self.request.hostname
-    logger.info(f"Task {task_id} started by {worker_id}")
-    input = BatchScoreInput(**kwargs)
-    batch_result = BatchScoreOutput(
-        batch=do_batch_scoring(input, ar_prediction, onlytext=True),
-        t_start=start,
-        t_end=time.time(),
-    )
-    return batch_result.batch
+    try:
+        start = time.time()
+        task_id = self.request.id
+        worker_id = self.request.hostname
+        logger.info(f"Task {task_id} started by {worker_id}")
+        input = BatchScoreInput(**kwargs)
+        batch_result = BatchScoreOutput(
+            batch=do_batch_scoring(input, ar_prediction, onlytext=True),
+            t_start=start,
+            t_end=time.time(),
+        )
+        return batch_result.batch
+    except SoftTimeLimitExceeded:
+        # Return a default value when the soft time limit is exceeded
+        return {item["id"]: AR_AVG_SCORE for item in input.batch}
 
 
 @app.task(
@@ -259,17 +284,21 @@ def ad_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
 
     The results are stored in the Celery result backend.
     """
-    start = time.time()
-    task_id = self.request.id
-    worker_id = self.request.hostname
-    logger.info(f"Task {task_id} started by {worker_id}")
-    input = BatchScoreInput(**kwargs)
-    batch_result = BatchScoreOutput(
-        batch=do_batch_scoring(input, ad_prediction),
-        t_start=start,
-        t_end=time.time(),
-    )
-    return batch_result.batch
+    try:
+        start = time.time()
+        task_id = self.request.id
+        worker_id = self.request.hostname
+        logger.info(f"Task {task_id} started by {worker_id}")
+        input = BatchScoreInput(**kwargs)
+        batch_result = BatchScoreOutput(
+            batch=do_batch_scoring(input, ad_prediction),
+            t_start=start,
+            t_end=time.time(),
+        )
+        return batch_result.batch
+    except SoftTimeLimitExceeded:
+        # Return a default value when the soft time limit is exceeded
+        return {item["id"]: AD_AVG_SCORE for item in input.batch}
 
 
 @app.task(
@@ -291,14 +320,18 @@ def td_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
 
     The results are stored in the Celery result backend.
     """
-    start = time.time()
-    task_id = self.request.id
-    worker_id = self.request.hostname
-    logger.info(f"Task {task_id} started by {worker_id}")
-    input = BatchScoreInput(**kwargs)
-    batch_result = BatchScoreOutput(
-        batch=do_batch_scoring(input, td_prediction),
-        t_start=start,
-        t_end=time.time(),
-    )
-    return batch_result.batch
+    try:
+        start = time.time()
+        task_id = self.request.id
+        worker_id = self.request.hostname
+        logger.info(f"Task {task_id} started by {worker_id}")
+        input = BatchScoreInput(**kwargs)
+        batch_result = BatchScoreOutput(
+            batch=do_batch_scoring(input, td_prediction),
+            t_start=start,
+            t_end=time.time(),
+        )
+        return batch_result.batch
+    except SoftTimeLimitExceeded:
+        # Return a default value when the soft time limit is exceeded
+        return {item["id"]: AD_AVG_SCORE for item in input.batch}
