@@ -32,9 +32,8 @@ services:
 
   ranker:
     build:
-      context: .
-      dockerfile: Dockerfile-ranker
-    image: dante-ranker
+      context: ..
+      dockerfile: Dockerfile
     depends_on:
       - redis
     environment:
@@ -46,17 +45,16 @@ services:
       - "8000:8000"
     volumes:
       - type: bind
-        source: ${PWD}/dante/app/config.ini
+        source: ${PWD}/config.ini
         target: /app/config.ini
-      # - type: bind
-      #   source: ${HOME}/.cache/dante
-      #   target: /app/cache
+      - type: bind
+        source: /Users/baott/Library/Caches/dante
+        target: /app/cache
 
-  worker:
+  celery-scorer-worker0:
     build:
-      context: .
-      dockerfile: Dockerfile-worker
-    image: dante-worker
+      context: ..
+      dockerfile: Dockerfile
     depends_on:
       - redis-celery-broker
     environment:
@@ -65,17 +63,17 @@ services:
     command: ["celery", "-A", "dante.app.scorer_worker.tasks", "worker", "-Q", "scorer", "--loglevel=info"]
     volumes:
       - type: bind
-        source: ${PWD}/dante/app/config.ini
+        source: ${PWD}/config.ini
         target: /app/config.ini
       - type: bind
-        source: ${HOME}/.cache/dante
+        source: /Users/baott/Library/Caches/dante
         target: /app/cache
     profiles:
       - no-gpu
 
   celery-scorer-worker1:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     depends_on:
       - redis-celery-broker
@@ -88,7 +86,7 @@ services:
         source: ${PWD}/config.ini
         target: /app/config.ini
       - type: bind
-        source: ${HOME}/.cache/dante
+        source: /Users/baott/Library/Caches/dante
         target: /app/cache
     profiles:
       - gpu

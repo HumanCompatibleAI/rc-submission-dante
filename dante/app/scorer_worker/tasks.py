@@ -61,8 +61,7 @@ from dante.osomerank import (
     ad_prediction,
     td_prediction,
     load_all,
-    AR_AVG_SCORE,
-    HAR_AVG_SCORE,
+    ER_AVG_SCORES,
     AD_AVG_SCORE,
 )
 from ...utils import getconfig, get_logger
@@ -72,9 +71,9 @@ logger = get_logger(__name__)
 c = getconfig()
 
 # hard time limit
-KILL_DEADLINE_SECONDS = c.get("SCORER", "KILL_DEADLINE_SECONDS")
+KILL_DEADLINE_SECONDS = c.getint("SCORER", "KILL_DEADLINE_SECONDS")
 # soft time limit
-TIME_LIMIT_SECONDS = c.get("SCORER", "TIME_LIMIT_SECONDS")
+TIME_LIMIT_SECONDS = c.getint("SCORER", "TIME_LIMIT_SECONDS")
 
 
 class SentimentScoreInput(BaseModel):
@@ -114,7 +113,7 @@ class SentimentScoreOutput(ScoreOutput):
 
 
 def do_har_scoring(input: SentimentScoreInput) -> SentimentScoreOutput:
-    har_score = har_prediction([input.text], "twitter")
+    har_score, _ = har_prediction([input.text], "twitter")
     return SentimentScoreOutput(
         id=input.id,
         score=har_score,
@@ -184,7 +183,7 @@ def do_batch_scoring(
         records = (item["text"] for item in input.batch)
     else:
         records = input.batch
-    scores = prediction_function(records, input.platform)
+    scores, metrics = prediction_function(records, input.platform)
     result = dict()
     for item, score in zip(input.batch, scores):
         result[item["id"]] = score
@@ -223,7 +222,7 @@ def har_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
         return batch_result.batch
     except SoftTimeLimitExceeded:
         # Return a default value when the soft time limit is exceeded
-        return {item["id"]: HAR_AVG_SCORE for item in input.batch}
+        return {item["id"]: ER_AVG_SCORES[input.platform]['HAR'] for item in input.batch}
 
 
 @app.task(
@@ -258,7 +257,7 @@ def ar_batch_scorer(self, **kwargs) -> list[dict[str, float]]:
         return batch_result.batch
     except SoftTimeLimitExceeded:
         # Return a default value when the soft time limit is exceeded
-        return {item["id"]: AR_AVG_SCORE for item in input.batch}
+        return {item["id"]: ER_AVG_SCORES[input.platform]['AR'] for item in input.batch}
 
 
 @app.task(

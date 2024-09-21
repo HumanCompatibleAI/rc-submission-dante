@@ -199,3 +199,6 @@ debug/
 # Configuration files
 *.ini
 
+tests/
+!tests/*.yml
+!tests/rc-extension-data/
